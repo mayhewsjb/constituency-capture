@@ -70,6 +70,7 @@ export function SubmissionForm() {
 
   const [anonymised, setAnonymised] = useState(false);
   const [anonExpanded, setAnonExpanded] = useState(false);
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -254,11 +255,11 @@ export function SubmissionForm() {
           <div className="mb-5 flex items-center justify-between text-sm rounded-xl px-4 py-3" style={{ background: "rgba(220,232,255,0.6)", border: "1px solid rgba(180,200,255,0.5)", color: "#1E2640" }}>
             <span>
               {lookingUpConstituency ? (
-                <span style={{ color: "#A0A8C0" }}>Finding your MP…</span>
-              ) : constituency.mpName ? (
-                <>Your MP is <span className="font-medium">{constituency.mpName}</span></>
+                <span style={{ color: "#A0A8C0" }}>Finding your constituency…</span>
               ) : (
-                <span style={{ color: "#A0A8C0" }}>Constituency found</span>
+                <span className="font-medium">
+                  {constituencyShort}{constituency.mpName ? ` — ${constituency.mpName}` : ""}
+                </span>
               )}
             </span>
             <button
@@ -466,10 +467,44 @@ export function SubmissionForm() {
           <p className="text-xs text-center" style={{ color: "#A0A8C0" }}>
             Goes to your MP every Monday
             {" · "}
-            <Link href="/how-it-works" className="underline underline-offset-2 hover:text-gray-600">
+            <button
+              type="button"
+              onClick={() => setHowItWorksOpen((v) => !v)}
+              className="underline underline-offset-2 hover:opacity-70"
+              style={{ color: "#A0A8C0" }}
+            >
               How it works
-            </Link>
+            </button>
           </p>
+        </div>
+
+        {/* How it works expandable */}
+        <div
+          style={{
+            maxHeight: howItWorksOpen ? "600px" : "0px",
+            overflow: "hidden",
+            transition: "max-height 0.35s ease",
+          }}
+        >
+          <div className="pt-5 mt-2 space-y-4 text-[14px]" style={{ borderTop: "1px solid rgba(160,168,192,0.25)", color: "#A0A8C0" }}>
+            <p className="font-medium" style={{ color: "#1E2640" }}>How it works</p>
+            <div className="space-y-1">
+              <p className="font-medium" style={{ color: "#1E2640" }}>You submit, we route it</p>
+              <p>Type something, record a voice note, or attach a photo — or all three. We use your location to work out which MP represents your area and make sure your submission reaches the right person.</p>
+            </div>
+            <div className="space-y-1">
+              <p className="font-medium" style={{ color: "#1E2640" }}>Every Monday morning</p>
+              <p>All submissions from your constituency that week are gathered and turned into a clear summary. That summary lands in your MP&apos;s inbox at 11am on Monday — the start of their working week, when it&apos;s most likely to be read.</p>
+            </div>
+            <div className="space-y-1">
+              <p className="font-medium" style={{ color: "#1E2640" }}>Your MP can see more</p>
+              <p>MPs who register on the platform get a full dashboard — every submission, issue trends over time, and how their constituency compares week to week. Their registration status is public. You can see whether your MP is engaged or not.</p>
+            </div>
+            <div className="space-y-1">
+              <p className="font-medium" style={{ color: "#1E2640" }}>Your privacy</p>
+              <p>You don&apos;t need an account. You don&apos;t need to give your name. By default your submission is sent with your details — MPs take named constituent feedback more seriously — but you can choose to submit anonymously using the toggle above. Either way, your raw submission is never published publicly.</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
