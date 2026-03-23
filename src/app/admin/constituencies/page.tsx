@@ -97,7 +97,7 @@ export default function ConstituenciesPage() {
             {filtered.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
-                  {search ? "No matches found." : "No constituencies yet. Use "Refresh MP Data" in the admin panel."}
+                  {search ? "No matches found." : "No constituencies yet. Use \u201cRefresh MP Data\u201d in the admin panel."}
                 </td>
               </tr>
             ) : (
