@@ -24,9 +24,6 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-gray-50 text-gray-900">
         <NavBar />
         <main className="flex-1">{children}</main>
-        <footer className="border-t border-gray-200 py-6 text-center text-sm text-gray-500">
-          <p>Constituency Capture &mdash; Making local democracy work for you.</p>
-        </footer>
       </body>
     </html>
   );

@@ -21,7 +21,6 @@ function generateFingerprint(): string {
     screen.width + "x" + screen.height,
     Intl.DateTimeFormat().resolvedOptions().timeZone,
   ].join("|");
-
   let hash = 0;
   for (let i = 0; i < data.length; i++) {
     const char = data.charCodeAt(i);
@@ -31,16 +30,26 @@ function generateFingerprint(): string {
   return Math.abs(hash).toString(16);
 }
 
+function getMPFirstName(mpName: string | null | undefined): string {
+  if (!mpName) return "";
+  const stripped = mpName
+    .replace(/^(mr|mrs|ms|miss|dr|sir|dame|lord|lady|the rt hon|rt hon)\s+/i, "")
+    .trim();
+  return stripped.split(" ")[0] ?? "";
+}
+
+function shortConstituencyName(name: string): string {
+  return name.replace(/\s+(and|&)\s+/i, " & ").replace(" Parliamentary Constituency", "");
+}
+
 export function SubmissionForm() {
   const [user, setUser] = useState<User | null>(null);
 
-  // Content state
   const [textContent, setTextContent] = useState("");
   const [voicePath, setVoicePath] = useState<string | null>(null);
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
-  // Voice recording
   const [isRecording, setIsRecording] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -48,7 +57,6 @@ export function SubmissionForm() {
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Location state
   const [locationStatus, setLocationStatus] = useState<
     "idle" | "requesting" | "granted" | "denied" | "away" | "postcode"
   >("idle");
@@ -57,14 +65,21 @@ export function SubmissionForm() {
   const [longitude, setLongitude] = useState<number | null>(null);
   const [postcode, setPostcode] = useState("");
   const [isAwayFromArea, setIsAwayFromArea] = useState(false);
-  const [locationError, setLocationError] = useState<string | null>(null);
   const [lookingUpConstituency, setLookingUpConstituency] = useState(false);
+  const [showLocationEdit, setShowLocationEdit] = useState(false);
 
-  // Form state
-  const [anonymised, setAnonymised] = useState(false);
+  const [anonymised, setAnonymised] = useState(true);
+  const [anonExpanded, setAnonExpanded] = useState(false);
+
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  const mpFirstName = getMPFirstName(constituency?.mpName);
+  const constituencyShort = constituency ? shortConstituencyName(constituency.name) : "";
+  const hasContent = !!(textContent.trim() || voicePath || photoPath);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -72,8 +87,8 @@ export function SubmissionForm() {
       .then((d) => setUser(d.user));
   }, []);
 
-  // Request location when form is first interacted with (lazy)
-  const requestLocation = () => {
+  useEffect(() => {
+    if (!navigator.geolocation) { setLocationStatus("denied"); return; }
     setLocationStatus("requesting");
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
@@ -85,88 +100,53 @@ export function SubmissionForm() {
         try {
           const res = await fetch(`/api/mapIt?lat=${lat}&lng=${lng}`);
           const data = await res.json();
-          if (data.constituency) {
-            setConstituency(data.constituency);
-          }
-        } catch {
-          // Silently fail — location still recorded
-        } finally {
-          setLookingUpConstituency(false);
-        }
+          if (data.constituency) setConstituency(data.constituency);
+        } catch { /* silent */ } finally { setLookingUpConstituency(false); }
       },
-      () => {
-        setLocationStatus("denied");
-      },
-      { timeout: 10000 }
+      () => setLocationStatus("denied"),
+      { timeout: 8000 }
     );
-  };
+  }, []);
 
   const lookupPostcode = async () => {
     if (!postcode.trim()) return;
     setLookingUpConstituency(true);
-    setLocationError(null);
     try {
-      const res = await fetch(
-        `/api/mapIt?postcode=${encodeURIComponent(postcode.trim())}`
-      );
+      const res = await fetch(`/api/mapIt?postcode=${encodeURIComponent(postcode.trim())}`);
       const data = await res.json();
       if (data.constituency) {
         setConstituency(data.constituency);
         setLocationStatus("postcode");
-      } else {
-        setLocationError(data.error || "Postcode not found");
+        setShowLocationEdit(false);
       }
-    } catch {
-      setLocationError("Failed to look up postcode");
-    } finally {
-      setLookingUpConstituency(false);
-    }
+    } catch { /* silent */ } finally { setLookingUpConstituency(false); }
   };
 
-  // Voice recording
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       mediaRecorder.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        const url = URL.createObjectURL(blob);
-        setAudioUrl(url);
-
-        // Upload the recording
+        setAudioUrl(URL.createObjectURL(blob));
         const formData = new FormData();
         formData.append("file", blob, "voice-memo.webm");
         formData.append("type", "voice");
         try {
-          const res = await fetch("/api/upload", {
-            method: "POST",
-            body: formData,
-          });
+          const res = await fetch("/api/upload", { method: "POST", body: formData });
           const data = await res.json();
           if (data.path) setVoicePath(data.path);
-        } catch {
-          // Keep audio URL for playback even if upload fails
-        }
-
+        } catch { /* keep local url */ }
         stream.getTracks().forEach((t) => t.stop());
       };
-
       mediaRecorder.start();
       setIsRecording(true);
       setRecordingSeconds(0);
-      timerRef.current = setInterval(() => {
-        setRecordingSeconds((s) => s + 1);
-      }, 1000);
-    } catch {
-      alert("Could not access microphone. Please check permissions.");
-    }
+      timerRef.current = setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
+    } catch { alert("Could not access microphone."); }
   };
 
   const stopRecording = () => {
@@ -180,381 +160,309 @@ export function SubmissionForm() {
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    const preview = URL.createObjectURL(file);
-    setPhotoPreview(preview);
-
+    setPhotoPreview(URL.createObjectURL(file));
     const formData = new FormData();
     formData.append("file", file);
     formData.append("type", "photo");
     try {
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
       const data = await res.json();
       if (data.path) setPhotoPath(data.path);
-    } catch {
-      // Keep preview even if upload fails
-    }
+    } catch { /* keep preview */ }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     setSubmitError(null);
-
-    if (!textContent && !voicePath && !photoPath) {
-      setSubmitError(
-        "Please add at least some text, a voice memo, or a photo."
-      );
-      return;
-    }
-
+    if (!hasContent) { setSubmitError("Add a message, voice memo, or photo before sending."); return; }
     setSubmitting(true);
-
-    const finalLocationStatus = isAwayFromArea
-      ? "away"
-      : locationStatus === "postcode"
-      ? "postcode"
-      : locationStatus === "granted"
-      ? "granted"
+    const finalLocationStatus = isAwayFromArea ? "away"
+      : locationStatus === "postcode" ? "postcode"
+      : locationStatus === "granted" ? "granted"
       : "denied";
-
     try {
-      const fingerprint = generateFingerprint();
       const res = await fetch("/api/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          textContent: textContent || null,
+          textContent: textContent.trim() || null,
           voiceMemoPath: voicePath,
           photoPath,
-          deviceFingerprint: fingerprint,
+          deviceFingerprint: generateFingerprint(),
           locationStatus: finalLocationStatus,
-          latitude,
-          longitude,
+          latitude, longitude,
           postcode: postcode || null,
           isAwayFromArea,
           constituencyId: constituency?.id || null,
           anonymised,
         }),
       });
-
       const data = await res.json();
-      if (!res.ok) {
-        setSubmitError(data.error || "Failed to submit");
-      } else {
-        setSubmitted(true);
-      }
-    } catch {
-      setSubmitError("Network error. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
+      if (!res.ok) setSubmitError(data.error || "Failed to submit");
+      else setSubmitted(true);
+    } catch { setSubmitError("Network error. Please try again."); }
+    finally { setSubmitting(false); }
+  };
+
+  const resetForm = () => {
+    setTextContent("");
+    setVoicePath(null);
+    setAudioUrl(null);
+    setPhotoPath(null);
+    setPhotoPreview(null);
+    setSubmitted(false);
+    setSubmitError(null);
   };
 
   const formatTime = (s: number) =>
     `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
-  if (submitted) {
-    return (
-      <div className="max-w-2xl mx-auto px-4 py-16 text-center">
-        <div className="bg-green-50 border border-green-200 rounded-xl p-10">
-          <div className="text-5xl mb-4">✓</div>
-          <h2 className="text-2xl font-bold text-green-800 mb-2">
-            Submission received
-          </h2>
-          <p className="text-green-700 mb-6">
-            Thank you. Your concern has been recorded
-            {constituency ? ` for ${constituency.name}` : ""} and will be
-            included in the next MP digest.
-          </p>
-          <div className="flex justify-center gap-3">
-            <button
-              onClick={() => {
-                setSubmitted(false);
-                setTextContent("");
-                setVoicePath(null);
-                setAudioUrl(null);
-                setPhotoPath(null);
-                setPhotoPreview(null);
-                setLocationStatus("idle");
-                setConstituency(null);
-              }}
-              className="bg-green-700 text-white px-5 py-2 rounded-lg hover:bg-green-800 transition-colors"
-            >
-              Submit another
-            </button>
-            {user && (
-              <Link
-                href="/submissions"
-                className="border border-green-700 text-green-700 px-5 py-2 rounded-lg hover:bg-green-50 transition-colors"
-              >
-                View my submissions
-              </Link>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <form onSubmit={handleSubmit} className="max-w-2xl mx-auto px-4 py-10 space-y-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Submit a concern
-        </h1>
-        <p className="text-gray-600">
-          Share what matters to you. Your submission will be included in a
-          digest sent to your local MP.
-        </p>
-      </div>
+    <div className="min-h-screen flex flex-col" style={{ background: "var(--background)" }}>
+      <div className="flex-1 flex flex-col w-full max-w-[480px] mx-auto px-4 pt-6 pb-4">
 
-      {/* Text area */}
-      <section className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-        <h2 className="font-semibold text-gray-800">Your concern</h2>
-        <textarea
-          value={textContent}
-          onChange={(e) => setTextContent(e.target.value)}
-          placeholder="Describe your concern or complaint in your own words..."
-          rows={5}
-          className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-        />
-      </section>
-
-      {/* Voice memo */}
-      <section className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-        <h2 className="font-semibold text-gray-800">Voice memo (optional)</h2>
-        {!isRecording && !audioUrl && (
-          <button
-            type="button"
-            onClick={startRecording}
-            className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 px-4 py-2.5 rounded-lg hover:bg-red-100 transition-colors"
-          >
-            <span className="text-lg">🎙</span>
-            Record voice memo
-          </button>
-        )}
-        {isRecording && (
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-red-600">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
-              </span>
-              Recording {formatTime(recordingSeconds)}
-            </div>
-            <button
-              type="button"
-              onClick={stopRecording}
-              className="bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors text-sm"
-            >
-              Stop recording
-            </button>
-          </div>
-        )}
-        {audioUrl && (
-          <div className="space-y-2">
-            <audio src={audioUrl} controls className="w-full" />
-            <button
-              type="button"
-              onClick={() => {
-                setAudioUrl(null);
-                setVoicePath(null);
-              }}
-              className="text-sm text-red-600 hover:text-red-800"
-            >
-              Remove recording
-            </button>
-          </div>
-        )}
-      </section>
-
-      {/* Photo upload */}
-      <section className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-        <h2 className="font-semibold text-gray-800">Photo (optional)</h2>
-        {!photoPreview ? (
-          <label className="flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2.5 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer w-fit">
-            <span className="text-lg">📷</span>
-            Upload photo
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handlePhotoChange}
-              className="hidden"
-            />
-          </label>
-        ) : (
-          <div className="space-y-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={photoPreview}
-              alt="Uploaded preview"
-              className="max-h-48 rounded-lg border border-gray-200 object-cover"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                setPhotoPreview(null);
-                setPhotoPath(null);
-              }}
-              className="text-sm text-red-600 hover:text-red-800"
-            >
-              Remove photo
-            </button>
-          </div>
-        )}
-      </section>
-
-      {/* Location */}
-      <section className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-        <h2 className="font-semibold text-gray-800">Your location</h2>
-        <p className="text-sm text-gray-500">
-          We use your location to identify your constituency and route your
-          submission to the right MP.
+        {/* Wordmark */}
+        <p className="text-[10px] tracking-widest uppercase text-gray-400 font-medium mb-8">
+          Constituency Capture
         </p>
 
-        {locationStatus === "idle" && (
-          <button
-            type="button"
-            onClick={requestLocation}
-            className="flex items-center gap-2 bg-blue-700 text-white px-4 py-2.5 rounded-lg hover:bg-blue-800 transition-colors"
-          >
-            <span>📍</span>
-            Detect my location
-          </button>
-        )}
-
-        {locationStatus === "requesting" && (
-          <p className="text-sm text-gray-500 animate-pulse">
-            Requesting location…
-          </p>
-        )}
-
-        {locationStatus === "granted" && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
-            {lookingUpConstituency ? (
-              <span className="animate-pulse">Looking up constituency…</span>
-            ) : constituency ? (
-              <>
-                Location detected. Constituency:{" "}
-                <strong>{constituency.name}</strong>
-                {constituency.mpName && ` (MP: ${constituency.mpName})`}
-              </>
-            ) : (
-              "Location detected. Constituency not found — submission will be filed without one."
-            )}
-          </div>
-        )}
-
-        {locationStatus === "denied" && (
-          <div className="space-y-3">
-            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
-              Location access was denied. You can still submit by entering your
-              postcode or letting us know you&apos;re away from your area.
+        {/* Headline */}
+        <div className="mb-6">
+          <h1 className="text-[26px] font-medium text-gray-900 leading-tight">
+            What&apos;s happening?
+          </h1>
+          {constituencyShort && (
+            <p className="text-[22px] font-medium text-gray-400 leading-tight mt-0.5">
+              {constituencyShort}
             </p>
+          )}
+        </div>
 
-            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isAwayFromArea}
-                onChange={(e) => {
-                  setIsAwayFromArea(e.target.checked);
-                  if (e.target.checked) setLocationStatus("away");
-                }}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600"
-              />
-              I am away from my local area
-            </label>
+        {/* Location card — resolved */}
+        {locationStatus === "granted" && constituency && !showLocationEdit && (
+          <div className="mb-5 flex items-center justify-between text-sm text-gray-600">
+            <span>
+              {lookingUpConstituency ? (
+                <span className="text-gray-400">Finding your MP…</span>
+              ) : constituency.mpName ? (
+                <>Your MP is <span className="font-medium text-gray-800">{constituency.mpName}</span></>
+              ) : (
+                <span className="text-gray-400">Constituency found</span>
+              )}
+            </span>
+            <button
+              onClick={() => setShowLocationEdit(true)}
+              className="text-gray-400 hover:text-gray-600 underline underline-offset-2 ml-4 shrink-0"
+            >
+              Change
+            </button>
+          </div>
+        )}
 
+        {/* Location fallback / edit */}
+        {(locationStatus === "denied" || showLocationEdit) && (
+          <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+            <p className="text-sm font-medium text-gray-700">Where are you?</p>
             <div className="flex gap-2">
               <input
                 type="text"
-                placeholder="Enter postcode (e.g. SW1A 1AA)"
+                placeholder="Enter postcode"
                 value={postcode}
                 onChange={(e) => setPostcode(e.target.value)}
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onKeyDown={(e) => e.key === "Enter" && lookupPostcode()}
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
               />
               <button
-                type="button"
                 onClick={lookupPostcode}
                 disabled={lookingUpConstituency}
-                className="bg-blue-700 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-800 disabled:opacity-50 transition-colors"
+                className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
               >
-                {lookingUpConstituency ? "…" : "Look up"}
+                {lookingUpConstituency ? "…" : "Go"}
               </button>
             </div>
-            {locationError && (
-              <p className="text-sm text-red-600">{locationError}</p>
-            )}
-            {constituency && postcode && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
-                Constituency: <strong>{constituency.name}</strong>
-                {constituency.mpName && ` (MP: ${constituency.mpName})`}
+            <label className="flex items-center gap-2 text-sm text-gray-500 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isAwayFromArea}
+                onChange={(e) => setIsAwayFromArea(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              I&apos;m away from my local area
+            </label>
+          </div>
+        )}
+
+        {/* Detecting */}
+        {locationStatus === "requesting" && !showLocationEdit && (
+          <div className="mb-5 text-sm text-gray-400">Detecting location…</div>
+        )}
+
+        {/* Post-submission */}
+        {submitted ? (
+          <div className="flex-1 flex flex-col justify-center text-center py-10 space-y-4">
+            <p className="text-xl font-medium text-gray-900">
+              Sent{mpFirstName ? ` to ${mpFirstName}` : ""}. Thank you.
+            </p>
+            <button
+              onClick={resetForm}
+              className="text-sm text-gray-400 hover:text-gray-600 underline underline-offset-2"
+            >
+              Submit another
+            </button>
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col space-y-3">
+
+            {/* Attachment previews */}
+            {(audioUrl || photoPreview) && (
+              <div className="space-y-2">
+                {audioUrl && (
+                  <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-2.5">
+                    <audio src={audioUrl} controls className="flex-1 h-8" style={{ minWidth: 0 }} />
+                    <button
+                      onClick={() => { setAudioUrl(null); setVoicePath(null); }}
+                      className="text-gray-300 hover:text-gray-500 text-xl leading-none shrink-0"
+                      aria-label="Remove voice memo"
+                    >×</button>
+                  </div>
+                )}
+                {photoPreview && (
+                  <div className="relative w-fit">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={photoPreview}
+                      alt="Attachment"
+                      className="max-h-36 rounded-xl border border-gray-200 object-cover"
+                    />
+                    <button
+                      onClick={() => { setPhotoPreview(null); setPhotoPath(null); }}
+                      className="absolute top-1.5 right-1.5 bg-black/50 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                      aria-label="Remove photo"
+                    >×</button>
+                  </div>
+                )}
               </div>
+            )}
+
+            {/* Compose box */}
+            <div className="relative rounded-2xl border border-gray-200 bg-white">
+              <textarea
+                value={textContent}
+                onChange={(e) => setTextContent(e.target.value)}
+                placeholder={mpFirstName
+                  ? `Tell ${mpFirstName} what's happening…`
+                  : "Tell your MP what's happening…"}
+                rows={5}
+                className="w-full bg-transparent px-4 pt-4 pb-14 text-[15px] text-gray-900 placeholder-gray-400 focus:outline-none resize-none"
+              />
+              <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={isRecording ? stopRecording : startRecording}
+                  className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
+                    isRecording
+                      ? "bg-red-500 text-white"
+                      : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                  }`}
+                  aria-label={isRecording ? "Stop recording" : "Record voice memo"}
+                >
+                  {isRecording ? (
+                    <span className="text-[10px] font-mono font-semibold tabular-nums">
+                      {formatTime(recordingSeconds)}
+                    </span>
+                  ) : (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v6a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2zm7 8a1 1 0 0 1 1 1 8 8 0 0 1-7 7.938V21h2a1 1 0 0 1 0 2H9a1 1 0 0 1 0-2h2v-1.062A8 8 0 0 1 4 12a1 1 0 0 1 2 0 6 6 0 0 0 12 0 1 1 0 0 1 1-1z"/>
+                    </svg>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => photoInputRef.current?.click()}
+                  className="w-9 h-9 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 flex items-center justify-center transition-colors"
+                  aria-label="Attach photo"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M9 3l-1.83 2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.17L15 3H9zm3 15a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11zm0-2a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/>
+                  </svg>
+                </button>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoChange}
+                  className="hidden"
+                />
+              </div>
+            </div>
+
+            {/* Anonymisation */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setAnonExpanded((v) => !v)}
+                className="w-full flex items-center gap-3 py-2"
+              >
+                <span className="flex-1 h-px bg-gray-200" />
+                <span className="text-[10px] tracking-widest uppercase text-gray-400 font-medium whitespace-nowrap">
+                  anonymous by default
+                </span>
+                <span className="flex-1 h-px bg-gray-200" />
+              </button>
+              {anonExpanded && (
+                <div className="flex items-center justify-between px-1 pb-2 text-sm text-gray-500">
+                  <span>Keep me anonymous</span>
+                  <button
+                    type="button"
+                    onClick={() => setAnonymised((v) => !v)}
+                    className={`relative w-10 h-5 rounded-full transition-colors ${
+                      anonymised ? "bg-gray-900" : "bg-gray-300"
+                    }`}
+                    aria-label="Toggle anonymisation"
+                  >
+                    <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                      anonymised ? "translate-x-5" : "translate-x-0.5"
+                    }`} />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {submitError && (
+              <p className="text-sm text-red-500 text-center">{submitError}</p>
+            )}
+
+            {/* Send button */}
+            <button
+              onClick={handleSubmit}
+              disabled={submitting || !hasContent}
+              className="w-full py-3.5 rounded-2xl text-[15px] font-medium transition-opacity disabled:opacity-40"
+              style={{ background: "var(--foreground)", color: "var(--background)" }}
+            >
+              {submitting ? "Sending…" : mpFirstName ? `Send to ${mpFirstName}` : "Send"}
+            </button>
+
+            {!user && (
+              <p className="text-xs text-center text-gray-400">
+                <Link href="/auth/login" className="underline underline-offset-2 hover:text-gray-600">Log in</Link>
+                {" or "}
+                <Link href="/auth/register" className="underline underline-offset-2 hover:text-gray-600">create an account</Link>
+                {" to track your submissions"}
+              </p>
             )}
           </div>
         )}
-      </section>
+      </div>
 
-      {/* Anonymisation */}
-      <section className="bg-white rounded-xl border border-gray-200 p-6">
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={anonymised}
-            onChange={(e) => setAnonymised(e.target.checked)}
-            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600"
-          />
-          <div>
-            <span className="font-medium text-gray-800">
-              Keep my details anonymous in MP reports
-            </span>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Your name and email will not appear in the digest sent to your MP.
-            </p>
-          </div>
-        </label>
-      </section>
-
-      {/* Auth status */}
-      {!user && (
-        <p className="text-sm text-gray-600 text-center">
-          Submitting anonymously.{" "}
-          <Link href="/auth/register" className="text-blue-700 hover:underline">
-            Create an account
-          </Link>{" "}
-          or{" "}
-          <Link href="/auth/login" className="text-blue-700 hover:underline">
-            log in
-          </Link>{" "}
-          to track your submissions.
+      {/* Footer */}
+      <div className="w-full max-w-[480px] mx-auto px-4 pb-6 pt-2">
+        <p className="text-xs text-gray-400 text-center">
+          Goes to your MP every Monday
+          {" · "}
+          <Link href="/how-it-works" className="underline underline-offset-2 hover:text-gray-600">
+            How it works
+          </Link>
         </p>
-      )}
-
-      {user && (
-        <p className="text-sm text-gray-600 text-center">
-          Submitting as <strong>{user.email}</strong>
-        </p>
-      )}
-
-      {/* Error */}
-      {submitError && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
-          {submitError}
-        </div>
-      )}
-
-      {/* Submit */}
-      <button
-        type="submit"
-        disabled={submitting}
-        className="w-full bg-blue-700 text-white py-3 rounded-xl font-semibold text-lg hover:bg-blue-800 disabled:opacity-60 transition-colors"
-      >
-        {submitting ? "Submitting…" : "Submit concern"}
-      </button>
-    </form>
+      </div>
+    </div>
   );
 }
