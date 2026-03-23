@@ -220,10 +220,22 @@ export function SubmissionForm() {
     <div className="min-h-screen flex flex-col md:justify-center md:py-12" style={{ background: "var(--background)" }}>
       <div className="flex-1 md:flex-none flex flex-col w-full max-w-[480px] md:max-w-[560px] mx-auto px-4 pt-6 pb-4 md:px-10 md:py-10 md:bg-white md:rounded-2xl md:border md:border-gray-200">
 
-        {/* Wordmark */}
-        <p className="text-[10px] tracking-widest uppercase text-gray-400 font-medium mb-8">
-          Constituency Capture
-        </p>
+        {/* Wordmark row */}
+        <div className="flex items-center justify-between mb-8">
+          <p className="text-[10px] tracking-widest uppercase text-gray-400 font-medium">
+            Constituency Capture
+          </p>
+          {!user && (
+            <Link href="/auth/login" className="text-xs text-gray-400 hover:text-gray-600">
+              Log in
+            </Link>
+          )}
+          {user && (
+            <Link href="/submissions" className="text-xs text-gray-400 hover:text-gray-600">
+              My submissions
+            </Link>
+          )}
+        </div>
 
         {/* Headline */}
         <div className="mb-6">
@@ -441,14 +453,6 @@ export function SubmissionForm() {
               {submitting ? "Sending…" : mpFirstName ? `Send to ${mpFirstName}` : "Send"}
             </button>
 
-            {!user && (
-              <p className="text-xs text-center text-gray-400">
-                <Link href="/auth/login" className="underline underline-offset-2 hover:text-gray-600">Log in</Link>
-                {" or "}
-                <Link href="/auth/register" className="underline underline-offset-2 hover:text-gray-600">create an account</Link>
-                {" to track your submissions"}
-              </p>
-            )}
           </div>
         )}
 
