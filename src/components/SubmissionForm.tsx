@@ -68,7 +68,7 @@ export function SubmissionForm() {
   const [lookingUpConstituency, setLookingUpConstituency] = useState(false);
   const [showLocationEdit, setShowLocationEdit] = useState(false);
 
-  const [anonymised, setAnonymised] = useState(true);
+  const [anonymised, setAnonymised] = useState(false);
   const [anonExpanded, setAnonExpanded] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
@@ -217,21 +217,21 @@ export function SubmissionForm() {
     `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
   return (
-    <div className="min-h-screen flex flex-col md:justify-center md:py-12" style={{ background: "var(--background)" }}>
-      <div className="flex-1 md:flex-none flex flex-col w-full max-w-[480px] md:max-w-[560px] mx-auto px-4 pt-6 pb-4 md:px-10 md:py-10 md:bg-white md:rounded-2xl md:border md:border-gray-200">
+    <div className="min-h-screen flex flex-col md:justify-center md:py-12" style={{ background: "linear-gradient(145deg, #D6E4FF 0%, #FFD6DB 100%)" }}>
+      <div className="flex-1 md:flex-none flex flex-col w-full max-w-[480px] md:max-w-[560px] mx-auto px-4 pt-6 pb-4 md:px-10 md:py-10 md:rounded-2xl" style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.9)" }}>
 
         {/* Wordmark row */}
         <div className="flex items-center justify-between mb-8">
-          <p className="text-[10px] tracking-widest uppercase text-gray-400 font-medium">
+          <p className="text-[10px] tracking-widest uppercase font-medium" style={{ color: "#A0A8C0" }}>
             Constituency Capture
           </p>
           {!user && (
-            <Link href="/auth/login" className="text-xs text-gray-400 hover:text-gray-600">
+            <Link href="/auth/login" className="text-xs hover:opacity-70" style={{ color: "#4A6ED4" }}>
               Log in
             </Link>
           )}
           {user && (
-            <Link href="/submissions" className="text-xs text-gray-400 hover:text-gray-600">
+            <Link href="/submissions" className="text-xs hover:opacity-70" style={{ color: "#4A6ED4" }}>
               My submissions
             </Link>
           )}
@@ -239,11 +239,11 @@ export function SubmissionForm() {
 
         {/* Headline */}
         <div className="mb-6">
-          <h1 className="text-[26px] md:text-[32px] font-medium text-gray-900 leading-tight">
+          <h1 className="text-[26px] md:text-[32px] font-medium leading-tight" style={{ color: "#1E2640" }}>
             What&apos;s happening?
           </h1>
           {constituencyShort && (
-            <p className="text-[22px] md:text-[26px] font-medium text-gray-400 leading-tight mt-0.5">
+            <p className="text-[22px] md:text-[26px] font-medium leading-tight mt-0.5" style={{ color: "#A0A8C0" }}>
               {constituencyShort}
             </p>
           )}
@@ -251,19 +251,20 @@ export function SubmissionForm() {
 
         {/* Location card — resolved */}
         {locationStatus === "granted" && constituency && !showLocationEdit && (
-          <div className="mb-5 flex items-center justify-between text-sm text-gray-600">
+          <div className="mb-5 flex items-center justify-between text-sm rounded-xl px-4 py-3" style={{ background: "rgba(220,232,255,0.6)", border: "1px solid rgba(180,200,255,0.5)", color: "#1E2640" }}>
             <span>
               {lookingUpConstituency ? (
-                <span className="text-gray-400">Finding your MP…</span>
+                <span style={{ color: "#A0A8C0" }}>Finding your MP…</span>
               ) : constituency.mpName ? (
-                <>Your MP is <span className="font-medium text-gray-800">{constituency.mpName}</span></>
+                <>Your MP is <span className="font-medium">{constituency.mpName}</span></>
               ) : (
-                <span className="text-gray-400">Constituency found</span>
+                <span style={{ color: "#A0A8C0" }}>Constituency found</span>
               )}
             </span>
             <button
               onClick={() => setShowLocationEdit(true)}
-              className="text-gray-400 hover:text-gray-600 underline underline-offset-2 ml-4 shrink-0"
+              className="underline underline-offset-2 ml-4 shrink-0 hover:opacity-70"
+              style={{ color: "#4A6ED4" }}
             >
               Change
             </button>
@@ -272,8 +273,8 @@ export function SubmissionForm() {
 
         {/* Location fallback / edit */}
         {(locationStatus === "denied" || showLocationEdit) && (
-          <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 space-y-3">
-            <p className="text-sm font-medium text-gray-700">Where are you?</p>
+          <div className="mb-5 rounded-xl p-4 space-y-3" style={{ background: "rgba(220,232,255,0.6)", border: "1px solid rgba(180,200,255,0.5)" }}>
+            <p className="text-sm font-medium" style={{ color: "#1E2640" }}>Where are you?</p>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -281,17 +282,19 @@ export function SubmissionForm() {
                 value={postcode}
                 onChange={(e) => setPostcode(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && lookupPostcode()}
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+                className="flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                style={{ background: "rgba(255,255,255,0.7)", border: "1px solid rgba(180,200,255,0.5)", color: "#1E2640" }}
               />
               <button
                 onClick={lookupPostcode}
                 disabled={lookingUpConstituency}
-                className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+                className="px-4 py-2 rounded-lg text-sm disabled:opacity-50 font-medium"
+                style={{ background: "#1E2640", color: "#fff" }}
               >
                 {lookingUpConstituency ? "…" : "Go"}
               </button>
             </div>
-            <label className="flex items-center gap-2 text-sm text-gray-500 cursor-pointer">
+            <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: "#A0A8C0" }}>
               <input
                 type="checkbox"
                 checked={isAwayFromArea}
@@ -305,18 +308,19 @@ export function SubmissionForm() {
 
         {/* Detecting */}
         {locationStatus === "requesting" && !showLocationEdit && (
-          <div className="mb-5 text-sm text-gray-400">Detecting location…</div>
+          <div className="mb-5 text-sm" style={{ color: "#A0A8C0" }}>Detecting location…</div>
         )}
 
         {/* Post-submission */}
         {submitted ? (
           <div className="flex-1 flex flex-col justify-center text-center py-10 space-y-4">
-            <p className="text-xl font-medium text-gray-900">
+            <p className="text-xl font-medium" style={{ color: "#1E2640" }}>
               Sent{mpFirstName ? ` to ${mpFirstName}` : ""}. Thank you.
             </p>
             <button
               onClick={resetForm}
-              className="text-sm text-gray-400 hover:text-gray-600 underline underline-offset-2"
+              className="text-sm underline underline-offset-2 hover:opacity-70"
+              style={{ color: "#4A6ED4" }}
             >
               Submit another
             </button>
@@ -328,7 +332,7 @@ export function SubmissionForm() {
             {(audioUrl || photoPreview) && (
               <div className="space-y-2">
                 {audioUrl && (
-                  <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-2.5">
+                  <div className="flex items-center gap-3 rounded-xl px-4 py-2.5" style={{ background: "rgba(255,255,255,0.6)", border: "1px solid rgba(255,255,255,0.9)" }}>
                     <audio src={audioUrl} controls className="flex-1 h-8" style={{ minWidth: 0 }} />
                     <button
                       onClick={() => { setAudioUrl(null); setVoicePath(null); }}
@@ -356,7 +360,7 @@ export function SubmissionForm() {
             )}
 
             {/* Compose box */}
-            <div className="relative rounded-2xl border border-gray-200 bg-white">
+            <div className="relative rounded-2xl" style={{ background: "rgba(255,255,255,0.6)", border: "1px solid rgba(255,255,255,0.9)" }}>
               <textarea
                 value={textContent}
                 onChange={(e) => setTextContent(e.target.value)}
@@ -364,17 +368,17 @@ export function SubmissionForm() {
                   ? `Tell ${mpFirstName} what's happening…`
                   : "Tell your MP what's happening…"}
                 rows={5}
-                className="w-full bg-transparent px-4 pt-4 pb-14 text-[15px] text-gray-900 placeholder-gray-400 focus:outline-none resize-none"
+                className="w-full bg-transparent px-4 pt-4 pb-14 text-[15px] focus:outline-none resize-none"
+                style={{ color: "#1E2640" }}
               />
               <div className="absolute bottom-3 right-3 flex items-center gap-2">
                 <button
                   type="button"
                   onClick={isRecording ? stopRecording : startRecording}
-                  className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
-                    isRecording
-                      ? "bg-red-500 text-white"
-                      : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                  }`}
+                  className="w-9 h-9 rounded-full flex items-center justify-center transition-opacity hover:opacity-70"
+                  style={isRecording
+                    ? { background: "#ef4444", color: "#fff" }
+                    : { background: "rgba(220,232,255,0.7)", color: "#7B8EC0" }}
                   aria-label={isRecording ? "Stop recording" : "Record voice memo"}
                 >
                   {isRecording ? (
@@ -390,7 +394,8 @@ export function SubmissionForm() {
                 <button
                   type="button"
                   onClick={() => photoInputRef.current?.click()}
-                  className="w-9 h-9 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 flex items-center justify-center transition-colors"
+                  className="w-9 h-9 rounded-full flex items-center justify-center transition-opacity hover:opacity-70"
+                  style={{ background: "rgba(255,220,228,0.7)", color: "#C07B8E" }}
                   aria-label="Attach photo"
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
@@ -414,25 +419,25 @@ export function SubmissionForm() {
                 onClick={() => setAnonExpanded((v) => !v)}
                 className="w-full flex items-center gap-3 py-2"
               >
-                <span className="flex-1 h-px bg-gray-200" />
-                <span className="text-[10px] tracking-widest uppercase text-gray-400 font-medium whitespace-nowrap">
-                  anonymous by default
+                <span className="flex-1 h-px" style={{ background: "rgba(160,168,192,0.3)" }} />
+                <span className="text-[10px] tracking-widest uppercase font-medium whitespace-nowrap" style={{ color: "#A0A8C0" }}>
+                  share my details?
                 </span>
-                <span className="flex-1 h-px bg-gray-200" />
+                <span className="flex-1 h-px" style={{ background: "rgba(160,168,192,0.3)" }} />
               </button>
               {anonExpanded && (
-                <div className="flex items-center justify-between px-1 pb-2 text-sm text-gray-500">
-                  <span>Keep me anonymous</span>
+                <div className="flex items-center justify-between px-1 pb-2 text-sm" style={{ color: "#A0A8C0" }}>
+                  <span>Include my name with this submission</span>
                   <button
                     type="button"
                     onClick={() => setAnonymised((v) => !v)}
-                    className={`relative w-10 h-5 rounded-full transition-colors ${
-                      anonymised ? "bg-gray-900" : "bg-gray-300"
+                    className={`relative w-10 h-5 rounded-full transition-colors shrink-0 ml-3 ${
+                      !anonymised ? "bg-gray-900" : "bg-gray-300"
                     }`}
                     aria-label="Toggle anonymisation"
                   >
                     <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                      anonymised ? "translate-x-5" : "translate-x-0.5"
+                      !anonymised ? "translate-x-5" : "translate-x-0.5"
                     }`} />
                   </button>
                 </div>
@@ -440,7 +445,7 @@ export function SubmissionForm() {
             </div>
 
             {submitError && (
-              <p className="text-sm text-red-500 text-center">{submitError}</p>
+              <p className="text-sm text-center" style={{ color: "#A0A8C0" }}>{submitError}</p>
             )}
 
             {/* Send button */}
@@ -448,7 +453,7 @@ export function SubmissionForm() {
               onClick={handleSubmit}
               disabled={submitting || !hasContent}
               className="w-full py-3.5 rounded-2xl text-[15px] font-medium transition-opacity disabled:opacity-40"
-              style={{ background: "var(--foreground)", color: "var(--background)" }}
+              style={{ background: "linear-gradient(135deg, rgba(180,205,255,0.8) 0%, rgba(255,190,200,0.8) 100%)", border: "1px solid rgba(255,255,255,0.8)", color: "#1E2640" }}
             >
               {submitting ? "Sending…" : mpFirstName ? `Send to ${mpFirstName}` : "Send"}
             </button>
@@ -458,7 +463,7 @@ export function SubmissionForm() {
 
         {/* Footer */}
         <div className="pt-6 mt-auto">
-          <p className="text-xs text-gray-400 text-center">
+          <p className="text-xs text-center" style={{ color: "#A0A8C0" }}>
             Goes to your MP every Monday
             {" · "}
             <Link href="/how-it-works" className="underline underline-offset-2 hover:text-gray-600">
