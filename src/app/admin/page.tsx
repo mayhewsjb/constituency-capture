@@ -321,7 +321,6 @@ export default function AdminPage() {
               </p>
             )}
           </div>
-        </div>
 
           {/* Refresh MP data */}
           <div className="space-y-3">
