@@ -217,8 +217,8 @@ export function SubmissionForm() {
     `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "var(--background)" }}>
-      <div className="flex-1 flex flex-col w-full max-w-[480px] mx-auto px-4 pt-6 pb-4">
+    <div className="min-h-screen flex flex-col md:justify-center md:py-12" style={{ background: "var(--background)" }}>
+      <div className="flex-1 md:flex-none flex flex-col w-full max-w-[480px] md:max-w-[560px] mx-auto px-4 pt-6 pb-4 md:px-10 md:py-10 md:bg-white md:rounded-2xl md:border md:border-gray-200">
 
         {/* Wordmark */}
         <p className="text-[10px] tracking-widest uppercase text-gray-400 font-medium mb-8">
@@ -227,11 +227,11 @@ export function SubmissionForm() {
 
         {/* Headline */}
         <div className="mb-6">
-          <h1 className="text-[26px] font-medium text-gray-900 leading-tight">
+          <h1 className="text-[26px] md:text-[32px] font-medium text-gray-900 leading-tight">
             What&apos;s happening?
           </h1>
           {constituencyShort && (
-            <p className="text-[22px] font-medium text-gray-400 leading-tight mt-0.5">
+            <p className="text-[22px] md:text-[26px] font-medium text-gray-400 leading-tight mt-0.5">
               {constituencyShort}
             </p>
           )}
@@ -451,17 +451,17 @@ export function SubmissionForm() {
             )}
           </div>
         )}
-      </div>
 
-      {/* Footer */}
-      <div className="w-full max-w-[480px] mx-auto px-4 pb-6 pt-2">
-        <p className="text-xs text-gray-400 text-center">
-          Goes to your MP every Monday
-          {" · "}
-          <Link href="/how-it-works" className="underline underline-offset-2 hover:text-gray-600">
-            How it works
-          </Link>
-        </p>
+        {/* Footer */}
+        <div className="pt-6 mt-auto">
+          <p className="text-xs text-gray-400 text-center">
+            Goes to your MP every Monday
+            {" · "}
+            <Link href="/how-it-works" className="underline underline-offset-2 hover:text-gray-600">
+              How it works
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   );
