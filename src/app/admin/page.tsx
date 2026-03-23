@@ -33,7 +33,9 @@ interface Pagination {
 
 interface AdminSettings {
   id: string;
-  defaultDigestTime: string | null;
+  digestFrequency: string | null;
+  digestDay: string | null;
+  digestTime: string | null;
 }
 
 interface SyncResult {
@@ -67,7 +69,9 @@ export default function AdminPage() {
 
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
   const [settings, setSettings] = useState<AdminSettings | null>(null);
-  const [digestTime, setDigestTime] = useState("");
+  const [digestFrequency, setDigestFrequency] = useState("weekly");
+  const [digestDay, setDigestDay] = useState("monday");
+  const [digestTime, setDigestTime] = useState("08:00");
   const [digestSaving, setDigestSaving] = useState(false);
   const [digestSaved, setDigestSaved] = useState(false);
 
@@ -115,7 +119,9 @@ export default function AdminPage() {
     const data = await res.json();
     if (data.settings) {
       setSettings(data.settings);
-      setDigestTime(data.settings.defaultDigestTime || "");
+      setDigestFrequency(data.settings.digestFrequency || "weekly");
+      setDigestDay(data.settings.digestDay || "monday");
+      setDigestTime(data.settings.digestTime || "08:00");
     }
   };
 
@@ -168,13 +174,13 @@ export default function AdminPage() {
     }
   };
 
-  const handleSaveDigestTime = async () => {
+  const handleSaveDigest = async () => {
     setDigestSaving(true);
     try {
       const res = await fetch("/api/admin/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ defaultDigestTime: digestTime }),
+        body: JSON.stringify({ digestFrequency, digestDay, digestTime }),
       });
       const data = await res.json();
       if (data.success) {
@@ -231,31 +237,91 @@ export default function AdminPage() {
       <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
         <h2 className="text-lg font-semibold text-gray-800">Settings</h2>
 
-        <div className="grid sm:grid-cols-2 gap-6">
-          {/* Digest time */}
-          <div className="space-y-2">
+        <div className="space-y-4">
+          {/* Digest schedule */}
+          <div className="space-y-3">
             <label className="block text-sm font-medium text-gray-700">
-              Global digest send time
+              Default digest schedule
             </label>
+
+            {/* Frequency picker */}
             <div className="flex gap-2">
+              {(["daily", "weekly", "monthly"] as const).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => {
+                    setDigestFrequency(f);
+                    if (f === "weekly") setDigestDay("monday");
+                    if (f === "monthly") setDigestDay("1");
+                  }}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors capitalize ${
+                    digestFrequency === f
+                      ? "bg-blue-700 text-white border-blue-700"
+                      : "bg-white text-gray-700 border-gray-300 hover:border-blue-400"
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Day picker — weekly */}
+              {digestFrequency === "weekly" && (
+                <select
+                  value={digestDay}
+                  onChange={(e) => setDigestDay(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {["monday","tuesday","wednesday","thursday","friday","saturday","sunday"].map((d) => (
+                    <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
+                  ))}
+                </select>
+              )}
+
+              {/* Day picker — monthly */}
+              {digestFrequency === "monthly" && (
+                <select
+                  value={digestDay}
+                  onChange={(e) => setDigestDay(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {Array.from({ length: 28 }, (_, i) => String(i + 1)).map((d) => (
+                    <option key={d} value={d}>
+                      {d}{["1","21"].includes(d) ? "st" : ["2","22"].includes(d) ? "nd" : ["3","23"].includes(d) ? "rd" : "th"} of the month
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {/* Time picker — always shown */}
               <input
                 type="time"
                 value={digestTime}
                 onChange={(e) => setDigestTime(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+
               <button
-                onClick={handleSaveDigestTime}
+                onClick={handleSaveDigest}
                 disabled={digestSaving}
-                className="bg-blue-700 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-800 disabled:opacity-60"
+                className="bg-blue-700 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-800 disabled:opacity-60 transition-colors"
               >
                 {digestSaved ? "Saved!" : digestSaving ? "Saving…" : "Save"}
               </button>
             </div>
-            {settings?.defaultDigestTime && (
-              <p className="text-xs text-gray-500">Current: {settings.defaultDigestTime}</p>
+
+            {settings && (
+              <p className="text-xs text-gray-400">
+                Current:{" "}
+                {settings.digestFrequency === "daily" && `Daily at ${settings.digestTime}`}
+                {settings.digestFrequency === "weekly" && `Every ${settings.digestDay?.charAt(0).toUpperCase()}${settings.digestDay?.slice(1)} at ${settings.digestTime}`}
+                {settings.digestFrequency === "monthly" && `${settings.digestDay}${["1","21"].includes(settings.digestDay ?? "") ? "st" : ["2","22"].includes(settings.digestDay ?? "") ? "nd" : ["3","23"].includes(settings.digestDay ?? "") ? "rd" : "th"} of the month at ${settings.digestTime}`}
+              </p>
             )}
           </div>
+        </div>
 
           {/* Refresh MP data */}
           <div className="space-y-3">

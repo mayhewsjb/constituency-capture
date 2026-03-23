@@ -20,20 +20,22 @@ model User {
 }
 
 model Constituency {
-  id             String       @id @default(cuid())
-  name           String       @unique
-  mpName         String?
-  mpEmail        String?
-  mpParty        String?
-  mpParliamentId String?      // stable Parliament member ID — join key for syncs
-  mpPhotoUrl     String?
-  mpUserId       String?      // link to User with role=mp, nullable
-  digestSendTime String?      // nullable, for future per-constituency override
-  lastSyncedAt   DateTime?
-  submissions    Submission[]
-  users          User[]
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id                String       @id @default(cuid())
+  name              String       @unique
+  mpName            String?
+  mpEmail           String?
+  mpParty           String?
+  mpParliamentId    String?      // stable Parliament member ID — join key for syncs
+  mpPhotoUrl        String?
+  mpUserId          String?      // link to User with role=mp, nullable
+  digestFrequency   String?      // daily | weekly | monthly — per-constituency override (future)
+  digestDay         String?      // weekday name or day-of-month number (future)
+  digestTime        String?      // HH:MM (future)
+  lastSyncedAt      DateTime?
+  submissions       Submission[]
+  users             User[]
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 }
 
 model Submission {
@@ -58,8 +60,10 @@ model Submission {
 }
 
 model AdminSettings {
-  id                String   @id @default(cuid())
-  defaultDigestTime String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                     String   @id @default(cuid())
+  digestFrequency        String?  @default("weekly") // daily | weekly | monthly
+  digestDay              String?  @default("monday") // weekday name or day-of-month number
+  digestTime             String?  @default("08:00")  // HH:MM
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 }
