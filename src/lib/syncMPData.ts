@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { MP_EMAIL_OVERRIDES } from "./mpEmailOverrides";
 
 const MEMBERS_API =
   "https://members-api.parliament.uk/api/Members/Search?House=Commons&IsCurrentMember=true&take=20&skip=";
@@ -145,10 +146,10 @@ export async function syncMPData(): Promise<SyncResult> {
     warnings.push("Contact API fetch failed — MP emails not updated this run.");
   }
 
-  // --- Combine ---
+  // --- Combine: Contact API email, fall back to manual override ---
   const mpRecords: MPRecord[] = baseRecords.map((r) => ({
     ...r,
-    email: emailMap.get(r.parliamentId) ?? null,
+    email: emailMap.get(r.parliamentId) ?? MP_EMAIL_OVERRIDES[r.constituency] ?? null,
   }));
 
   // --- Upsert into DB ---
