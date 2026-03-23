@@ -3,8 +3,8 @@ import { prisma } from "./prisma";
 const MEMBERS_API =
   "https://members-api.parliament.uk/api/Members/Search?House=Commons&IsCurrentMember=true&take=20&skip=";
 
-const CONTACT_CSV_URL =
-  "https://www.parliament.uk/mps-lords-and-offices/offices/commons/house-of-commons-publication-scheme/members-and-members-staff/parliamentary-contact-details-for-mps/";
+const CONTACT_API = (id: string) =>
+  `https://members-api.parliament.uk/api/Members/${id}/Contact`;
 
 export interface SyncResult {
   success: boolean;
@@ -59,102 +59,48 @@ async function fetchAllMembers(): Promise<ParliamentMember[]> {
   return all;
 }
 
-// Parse the parliament.uk contact details page — it embeds a CSV download link
-// or we can try the direct CSV. Fall back gracefully if unavailable.
-async function fetchEmailMap(): Promise<Map<string, string>> {
-  const emailMap = new Map<string, string>();
-
+async function fetchEmailForMember(parliamentId: string): Promise<string | null> {
   try {
-    // The page links to a CSV — try fetching it directly via a known pattern
-    const csvRes = await fetch(CONTACT_CSV_URL, {
-      headers: { Accept: "text/csv,text/html,*/*" },
+    const res = await fetch(CONTACT_API(parliamentId), {
+      headers: { Accept: "application/json" },
     });
-    if (!csvRes.ok) {
-      throw new Error(`CSV fetch returned ${csvRes.status}`);
-    }
-
-    const contentType = csvRes.headers.get("content-type") ?? "";
-    const text = await csvRes.text();
-
-    if (contentType.includes("text/csv") || text.includes(",")) {
-      parseCSVIntoMap(text, emailMap);
-    } else {
-      // HTML page returned — try to find the embedded CSV link
-      const match = text.match(/href="([^"]+\.csv[^"]*)"/i);
-      if (match) {
-        const csvLinkRes = await fetch(match[1]);
-        if (csvLinkRes.ok) {
-          parseCSVIntoMap(await csvLinkRes.text(), emailMap);
-        }
-      }
-    }
+    if (!res.ok) return null;
+    const data = await res.json();
+    const contacts: { typeId: number; email?: string | null }[] = data.value ?? [];
+    // typeId 1 = Parliamentary office — most reliable email
+    const parliamentary = contacts.find((c) => c.typeId === 1);
+    return parliamentary?.email ?? null;
   } catch {
-    // Caller handles the empty map as a warning
+    return null;
+  }
+}
+
+// Fetch emails for all members with bounded concurrency to avoid rate limiting
+async function fetchAllEmails(
+  parliamentIds: string[],
+  concurrency = 5
+): Promise<Map<string, string>> {
+  const emailMap = new Map<string, string>();
+  const queue = [...parliamentIds];
+
+  async function worker() {
+    while (queue.length > 0) {
+      const id = queue.shift();
+      if (!id) break;
+      const email = await fetchEmailForMember(id);
+      if (email) emailMap.set(id, email);
+    }
   }
 
+  await Promise.all(Array.from({ length: concurrency }, worker));
   return emailMap;
-}
-
-function parseCSVIntoMap(csv: string, map: Map<string, string>) {
-  const lines = csv.split(/\r?\n/).filter(Boolean);
-  if (lines.length < 2) return;
-
-  const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase().trim());
-  const nameIdx = headers.findIndex((h) => h.includes("name"));
-  const emailIdx = headers.findIndex(
-    (h) => h.includes("email") || h.includes("e-mail")
-  );
-
-  if (nameIdx === -1 || emailIdx === -1) return;
-
-  for (let i = 1; i < lines.length; i++) {
-    const cols = parseCSVLine(lines[i]);
-    const name = cols[nameIdx]?.trim();
-    const email = cols[emailIdx]?.trim();
-    if (name && email && email.includes("@")) {
-      map.set(normaliseName(name), email);
-    }
-  }
-}
-
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (ch === "," && !inQuotes) {
-      result.push(current);
-      current = "";
-    } else {
-      current += ch;
-    }
-  }
-  result.push(current);
-  return result;
-}
-
-function normaliseName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/\b(mr|mrs|ms|dr|sir|dame|lord|lady|the rt hon|rt hon|mp)\b\.?/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 export async function syncMPData(): Promise<SyncResult> {
   const warnings: string[] = [];
   const syncedAt = new Date();
 
-  // --- Fetch Members API ---
+  // --- Fetch all current MPs ---
   let members: ParliamentMember[];
   try {
     members = await fetchAllMembers();
@@ -171,38 +117,39 @@ export async function syncMPData(): Promise<SyncResult> {
     };
   }
 
-  // --- Fetch email CSV ---
-  let emailMap: Map<string, string>;
-  try {
-    emailMap = await fetchEmailMap();
-    if (emailMap.size === 0) {
-      warnings.push("Email CSV could not be fetched or parsed — MP emails not updated this run.");
-    }
-  } catch {
-    emailMap = new Map();
-    warnings.push("Email CSV fetch failed — MP emails not updated this run.");
-  }
-
-  // --- Build combined MP records ---
-  const mpRecords: MPRecord[] = members
+  // --- Build base records from Members API ---
+  const baseRecords = members
     .map((m) => {
       const v = m.value;
       const constituency = v.latestHouseMembership?.membershipFrom ?? "";
       if (!constituency) return null;
-
-      const normName = normaliseName(v.nameDisplayAs);
-      const email = emailMap.get(normName) ?? null;
-
       return {
         parliamentId: String(v.id),
         fullName: v.nameDisplayAs,
         constituency,
         party: v.latestParty?.name ?? "",
         photoUrl: v.thumbnailUrl ?? "",
-        email,
-      } as MPRecord;
+      };
     })
-    .filter((r): r is MPRecord => r !== null);
+    .filter((r): r is NonNullable<typeof r> => r !== null);
+
+  // --- Fetch emails via Contact API (5 concurrent requests) ---
+  let emailMap: Map<string, string>;
+  try {
+    emailMap = await fetchAllEmails(baseRecords.map((r) => r.parliamentId));
+    if (emailMap.size === 0) {
+      warnings.push("Contact API returned no emails — MP emails not updated this run.");
+    }
+  } catch {
+    emailMap = new Map();
+    warnings.push("Contact API fetch failed — MP emails not updated this run.");
+  }
+
+  // --- Combine ---
+  const mpRecords: MPRecord[] = baseRecords.map((r) => ({
+    ...r,
+    email: emailMap.get(r.parliamentId) ?? null,
+  }));
 
   // --- Upsert into DB ---
   let created = 0;
@@ -232,7 +179,6 @@ export async function syncMPData(): Promise<SyncResult> {
         existing.mpPhotoUrl === newData.mpPhotoUrl;
 
       if (isUnchanged) {
-        // Still update lastSyncedAt
         await prisma.constituency.update({
           where: { name: mp.constituency },
           data: { lastSyncedAt: syncedAt },
@@ -247,10 +193,7 @@ export async function syncMPData(): Promise<SyncResult> {
       }
     } else {
       await prisma.constituency.create({
-        data: {
-          name: mp.constituency,
-          ...newData,
-        },
+        data: { name: mp.constituency, ...newData },
       });
       created++;
     }
