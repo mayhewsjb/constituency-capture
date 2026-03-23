@@ -56,12 +56,20 @@ export function NavBar() {
                     My Submissions
                   </Link>
                   {user.role === "admin" && (
-                    <Link
-                      href="/admin"
-                      className="text-gray-600 hover:text-blue-700"
-                    >
-                      Admin
-                    </Link>
+                    <>
+                      <Link
+                        href="/admin"
+                        className="text-gray-600 hover:text-blue-700"
+                      >
+                        Admin
+                      </Link>
+                      <Link
+                        href="/admin/constituencies"
+                        className="text-gray-600 hover:text-blue-700"
+                      >
+                        Constituencies
+                      </Link>
+                    </>
                   )}
                   <button
                     onClick={handleLogout}
