@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id             String        @id @default(cuid())
+  email          String        @unique
+  passwordHash   String
+  role           String        @default("resident") // resident, mp, admin
+  status         String        @default("active") // active, pending
+  constituencyId String?
+  constituency   Constituency? @relation(fields: [constituencyId], references: [id])
+  submissions    Submission[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model Constituency {
+  id             String       @id @default(cuid())
+  name           String       @unique
+  mpName         String?
+  mpEmail        String?
+  mpUserId       String? // link to User with role=mp, nullable
+  digestSendTime String? // nullable, for future per-constituency override
+  submissions    Submission[]
+  users          User[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Submission {
+  id                String        @id @default(cuid())
+  textContent       String?
+  voiceMemoPath     String?
+  photoPath         String?
+  timestamp         DateTime      @default(now())
+  deviceFingerprint String?
+  locationStatus    String // granted, away, postcode, denied
+  latitude          Float?
+  longitude         Float?
+  postcode          String?
+  isAwayFromArea    Boolean       @default(false)
+  constituencyId    String?
+  constituency      Constituency? @relation(fields: [constituencyId], references: [id])
+  anonymised        Boolean       @default(false)
+  userId            String?
+  user              User?         @relation(fields: [userId], references: [id])
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
+
+model AdminSettings {
+  id                String   @id @default(cuid())
+  defaultDigestTime String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
