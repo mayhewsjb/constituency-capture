@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 interface Submission {
   id: string;
@@ -180,7 +181,12 @@ export default function AdminPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10 space-y-10">
-      <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
+        <Link href="/admin/constituencies" className="text-sm text-blue-700 hover:underline">
+          View constituencies & MPs →
+        </Link>
+      </div>
 
       {/* Settings section */}
       <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
