@@ -24,8 +24,12 @@ model Constituency {
   name           String       @unique
   mpName         String?
   mpEmail        String?
-  mpUserId       String? // link to User with role=mp, nullable
-  digestSendTime String? // nullable, for future per-constituency override
+  mpParty        String?
+  mpParliamentId String?      // stable Parliament member ID — join key for syncs
+  mpPhotoUrl     String?
+  mpUserId       String?      // link to User with role=mp, nullable
+  digestSendTime String?      // nullable, for future per-constituency override
+  lastSyncedAt   DateTime?
   submissions    Submission[]
   users          User[]
   createdAt      DateTime     @default(now())

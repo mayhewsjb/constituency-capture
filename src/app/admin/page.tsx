@@ -36,6 +36,17 @@ interface AdminSettings {
   defaultDigestTime: string | null;
 }
 
+interface SyncResult {
+  success: boolean;
+  created: number;
+  updated: number;
+  unchanged: number;
+  total: number;
+  syncedAt: string;
+  warnings: string[];
+  error?: string;
+}
+
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-GB", {
     day: "numeric",
@@ -61,18 +72,18 @@ export default function AdminPage() {
   const [digestSaved, setDigestSaved] = useState(false);
 
   const [refreshing, setRefreshing] = useState(false);
-  const [refreshMsg, setRefreshMsg] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+
   const [userActionMsg, setUserActionMsg] = useState<string | null>(null);
+  const [firstBootSync, setFirstBootSync] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((d) => {
-        if (d.user?.role === "admin") {
-          setAuthorized(true);
-        } else {
-          setAuthorized(false);
-        }
+        if (d.user?.role === "admin") setAuthorized(true);
+        else setAuthorized(false);
       })
       .catch(() => setAuthorized(false));
   }, []);
@@ -82,6 +93,7 @@ export default function AdminPage() {
     fetchSubmissions(currentPage);
     fetchPendingUsers();
     fetchSettings();
+    checkAndAutoSync();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorized, currentPage]);
 
@@ -107,6 +119,41 @@ export default function AdminPage() {
     }
   };
 
+  const checkAndAutoSync = async () => {
+    const res = await fetch("/api/admin/constituencies?countOnly=true");
+    const data = await res.json();
+    if (data.count === 0) {
+      setFirstBootSync(true);
+      const result = await runSync();
+      if (result) setSyncResult(result);
+    }
+  };
+
+  const runSync = async (): Promise<SyncResult | null> => {
+    setRefreshing(true);
+    setSyncResult(null);
+    setSyncError(null);
+    try {
+      const res = await fetch("/api/admin/refresh-mp-data", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setSyncError(data.error || "Sync failed");
+        return null;
+      }
+      return data as SyncResult;
+    } catch {
+      setSyncError("Request failed — could not reach the server.");
+      return null;
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleRefreshMPs = async () => {
+    const result = await runSync();
+    if (result) setSyncResult(result);
+  };
+
   const handleUserAction = async (userId: string, action: "approve" | "reject") => {
     setUserActionMsg(null);
     const res = await fetch("/api/admin/users", {
@@ -118,20 +165,6 @@ export default function AdminPage() {
     if (data.success) {
       setUserActionMsg(`User ${action}d successfully.`);
       fetchPendingUsers();
-    }
-  };
-
-  const handleRefreshMPs = async () => {
-    setRefreshing(true);
-    setRefreshMsg(null);
-    try {
-      const res = await fetch("/api/admin/refresh-mp-data", { method: "POST" });
-      const data = await res.json();
-      setRefreshMsg(data.message || data.error || "Done");
-    } catch {
-      setRefreshMsg("Request failed");
-    } finally {
-      setRefreshing(false);
     }
   };
 
@@ -156,7 +189,7 @@ export default function AdminPage() {
 
   if (authorized === null) {
     return (
-      <div className="max-w-5xl mx-auto px-4 py-16 text-center text-gray-500">
+      <div className="max-w-5xl mx-auto px-4 py-16 text-center text-gray-500 animate-pulse">
         Loading…
       </div>
     );
@@ -166,9 +199,7 @@ export default function AdminPage() {
     return (
       <div className="max-w-5xl mx-auto px-4 py-16 text-center">
         <h1 className="text-2xl font-bold text-gray-900 mb-4">Access Denied</h1>
-        <p className="text-gray-600 mb-6">
-          You must be an admin to access this page.
-        </p>
+        <p className="text-gray-600 mb-6">You must be an admin to access this page.</p>
         <button
           onClick={() => router.push("/auth/login")}
           className="bg-blue-700 text-white px-5 py-2 rounded-lg hover:bg-blue-800"
@@ -187,6 +218,14 @@ export default function AdminPage() {
           View constituencies & MPs →
         </Link>
       </div>
+
+      {/* First-boot banner */}
+      {firstBootSync && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-5 py-4 text-sm text-blue-800">
+          <strong>Initial data sync ran on first load.</strong> Constituency and MP data has been
+          populated from the UK Parliament Members API.
+        </div>
+      )}
 
       {/* Settings section */}
       <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
@@ -214,26 +253,54 @@ export default function AdminPage() {
               </button>
             </div>
             {settings?.defaultDigestTime && (
-              <p className="text-xs text-gray-500">
-                Current: {settings.defaultDigestTime}
-              </p>
+              <p className="text-xs text-gray-500">Current: {settings.defaultDigestTime}</p>
             )}
           </div>
 
           {/* Refresh MP data */}
-          <div className="space-y-2">
+          <div className="space-y-3">
             <label className="block text-sm font-medium text-gray-700">
-              MP data (TheyWorkForYou)
+              MP data (UK Parliament Members API)
             </label>
             <button
               onClick={handleRefreshMPs}
               disabled={refreshing}
-              className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700 disabled:opacity-60"
+              className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700 disabled:opacity-60 transition-colors"
             >
-              {refreshing ? "Refreshing…" : "Refresh MP Data"}
+              {refreshing ? "Syncing…" : "Refresh MP Data"}
             </button>
-            {refreshMsg && (
-              <p className="text-sm text-gray-600">{refreshMsg}</p>
+
+            {syncError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+                <strong>Sync failed:</strong> {syncError}
+              </div>
+            )}
+
+            {syncResult && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 space-y-2 text-sm">
+                <div className="flex flex-wrap gap-4 text-gray-700">
+                  <span>
+                    <span className="font-semibold text-green-700">{syncResult.created}</span> created
+                  </span>
+                  <span>
+                    <span className="font-semibold text-blue-700">{syncResult.updated}</span> updated
+                  </span>
+                  <span>
+                    <span className="font-semibold text-gray-500">{syncResult.unchanged}</span> unchanged
+                  </span>
+                  <span className="text-gray-400">
+                    {syncResult.total} total
+                  </span>
+                </div>
+                <p className="text-xs text-gray-400">
+                  Last synced {formatDate(syncResult.syncedAt)}
+                </p>
+                {syncResult.warnings.map((w, i) => (
+                  <p key={i} className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1">
+                    ⚠ {w}
+                  </p>
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -274,9 +341,7 @@ export default function AdminPage() {
                   <tr key={u.id}>
                     <td className="py-3 text-gray-800">{u.email}</td>
                     <td className="py-3 text-gray-600 capitalize">{u.role}</td>
-                    <td className="py-3 text-gray-500">
-                      {formatDate(u.createdAt)}
-                    </td>
+                    <td className="py-3 text-gray-500">{formatDate(u.createdAt)}</td>
                     <td className="py-3">
                       <div className="flex gap-2">
                         <button
@@ -336,25 +401,17 @@ export default function AdminPage() {
                       {formatDate(sub.createdAt)}
                     </td>
                     <td className="py-3 text-gray-800">
-                      {sub.constituency?.name || (
-                        <span className="text-gray-400">—</span>
-                      )}
+                      {sub.constituency?.name || <span className="text-gray-400">—</span>}
                     </td>
                     <td className="py-3 text-gray-600">
-                      {sub.user?.email || (
-                        <span className="text-gray-400">Anon</span>
-                      )}
+                      {sub.user?.email || <span className="text-gray-400">Anon</span>}
                     </td>
                     <td className="py-3 text-gray-800 max-w-xs">
                       {sub.textContent ? (
                         <span className="line-clamp-2">{sub.textContent}</span>
                       ) : (
                         <span className="text-gray-400 italic">
-                          {sub.voiceMemoPath
-                            ? "Voice"
-                            : sub.photoPath
-                            ? "Photo"
-                            : "—"}
+                          {sub.voiceMemoPath ? "Voice" : sub.photoPath ? "Photo" : "—"}
                         </span>
                       )}
                     </td>
@@ -388,7 +445,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Pagination */}
         {pagination && pagination.pages > 1 && (
           <div className="flex items-center justify-between pt-4">
             <button
@@ -402,9 +458,7 @@ export default function AdminPage() {
               Page {pagination.page} of {pagination.pages}
             </span>
             <button
-              onClick={() =>
-                setCurrentPage((p) => Math.min(pagination.pages, p + 1))
-              }
+              onClick={() => setCurrentPage((p) => Math.min(pagination.pages, p + 1))}
               disabled={currentPage === pagination.pages}
               className="border border-gray-300 px-3 py-1.5 rounded text-sm disabled:opacity-40 hover:bg-gray-50"
             >
