@@ -16,6 +16,17 @@ interface Constituency {
   _count: { submissions: number };
 }
 
+interface SyncResult {
+  success: boolean;
+  created: number;
+  updated: number;
+  unchanged: number;
+  total: number;
+  syncedAt: string;
+  warnings: string[];
+  error?: string;
+}
+
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-GB", {
     day: "numeric",
@@ -31,6 +42,9 @@ export default function ConstituenciesPage() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [constituencies, setConstituencies] = useState<Constituency[]>([]);
   const [search, setSearch] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -44,14 +58,38 @@ export default function ConstituenciesPage() {
 
   useEffect(() => {
     if (!authorized) return;
-    fetch("/api/admin/constituencies")
-      .then((r) => r.json())
-      .then((d) => setConstituencies(d.constituencies || []));
+    loadConstituencies();
   }, [authorized]);
 
   useEffect(() => {
     if (authorized === false) router.push("/auth/login");
   }, [authorized, router]);
+
+  const loadConstituencies = () => {
+    fetch("/api/admin/constituencies")
+      .then((r) => r.json())
+      .then((d) => setConstituencies(d.constituencies || []));
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setSyncResult(null);
+    setSyncError(null);
+    try {
+      const res = await fetch("/api/admin/refresh-mp-data", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setSyncError(data.error || "Sync failed");
+      } else {
+        setSyncResult(data as SyncResult);
+        loadConstituencies();
+      }
+    } catch {
+      setSyncError("Request failed — could not reach the server.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const filtered = constituencies.filter(
     (c) =>
@@ -81,10 +119,37 @@ export default function ConstituenciesPage() {
             {lastSync && ` · last synced ${formatDate(lastSync)}`}
           </p>
         </div>
-        <Link href="/admin" className="text-sm text-gray-500 hover:text-blue-700">
-          ← Admin
-        </Link>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700 disabled:opacity-60 transition-colors"
+          >
+            {refreshing ? "Syncing…" : "Refresh MP Data"}
+          </button>
+          <Link href="/admin" className="text-sm text-gray-500 hover:text-blue-700">
+            ← Admin
+          </Link>
+        </div>
       </div>
+
+      {syncError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+          <strong>Sync failed:</strong> {syncError}
+        </div>
+      )}
+
+      {syncResult && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 flex flex-wrap gap-4 text-sm text-gray-700">
+          <span><span className="font-semibold text-green-700">{syncResult.created}</span> created</span>
+          <span><span className="font-semibold text-blue-700">{syncResult.updated}</span> updated</span>
+          <span><span className="font-semibold text-gray-500">{syncResult.unchanged}</span> unchanged</span>
+          <span className="text-gray-400">{syncResult.total} total</span>
+          {syncResult.warnings.map((w, i) => (
+            <span key={i} className="text-amber-700">⚠ {w}</span>
+          ))}
+        </div>
+      )}
 
       <input
         type="text"
@@ -111,12 +176,16 @@ export default function ConstituenciesPage() {
                 <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
                   {search
                     ? "No matches found."
-                    : "No constituencies yet. Use \u201cRefresh MP Data\u201d in the admin panel."}
+                    : "No constituencies yet. Use \u201cRefresh MP Data\u201d to populate."}
                 </td>
               </tr>
             ) : (
               filtered.map((c) => (
-                <tr key={c.id} className="hover:bg-gray-50 transition-colors">
+                <tr
+                  key={c.id}
+                  onClick={() => router.push(`/admin/constituencies/${c.id}`)}
+                  className="hover:bg-blue-50 cursor-pointer transition-colors"
+                >
                   <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
                   <td className="px-4 py-3 text-gray-700">
                     {c.mpName ? (
@@ -144,6 +213,7 @@ export default function ConstituenciesPage() {
                     {c.mpEmail ? (
                       <a
                         href={`mailto:${c.mpEmail}`}
+                        onClick={(e) => e.stopPropagation()}
                         className="hover:text-blue-700 hover:underline"
                       >
                         {c.mpEmail}
